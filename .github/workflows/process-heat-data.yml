@@ -1,1 +1,53 @@
+# .github/workflows/process-heat-data.yml
+name: Processar Focos de Calor - Maranhão
 
+on:
+  schedule:
+    # Executa a cada 60 minutos
+    - cron: '0 * * * *'
+  workflow_dispatch: # Permite execução manual
+
+jobs:
+  process-heat-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gdal-bin libgdal-dev
+        
+    - name: Install Python dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Setup Google Drive credentials
+      env:
+        GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
+      run: |
+        echo "$GOOGLE_CREDENTIALS" > credentials.json
+        
+    - name: Process heat focus data
+      run: python scripts/process_focos_calor.py
+      
+    - name: Cleanup credentials
+      run: rm -f credentials.json
+      
+    - name: Commit logs (optional)
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        echo "$(date): Processo executado com sucesso" >> logs/execution_log.txt
+        mkdir -p logs
+        git add logs/execution_log.txt
+        git diff --staged --quiet || git commit -m "Log: Processamento de focos $(date)"
+        git push || true
