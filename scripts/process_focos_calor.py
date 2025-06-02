@@ -1,97 +1,4 @@
-def update_main_file(self, local_path, folder_id, filename):
-        """Atualiza o arquivo principal (mesmo ID, conteúdo novo)"""
-        try:
-            # Buscar arquivo principal existente
-            query = f"'{folder_id}' in parents and name='{filename}' and trashed=false"
-            results = self.drive_service.files().list(q=query, fields="files(id, name)").execute()
-            
-            files = results.get('files', [])
-            
-            if files:
-                # Atualizar arquivo existente
-                file_id = files[0]['id']
-                media = MediaFileUpload(local_path, resumable=True)
-                updated_file = self.drive_service.files().update(
-                    fileId=file_id, media_body=media
-                ).execute()
-                print(f"   ✅ Arquivo principal atualizado: {filename} (ID: {file_id})")
-                return file_id
-            else:
-                # Criar novo arquivo principal
-                file_metadata = {'name': filename, 'parents': [folder_id]}
-                media = MediaFileUpload(local_path, resumable=True)
-                file = self.drive_service.files().create(
-                    body=file_metadata, media_body=media, fields='id,name'
-                ).execute()
-                file_id = file.get('id')
-                print(f"   ✅ Arquivo principal criado: {filename} (ID: {file_id})")
-                return file_id
-                
-        except Exception as e:
-            print(f"   ❌ Erro ao atualizar arquivo principal: {e}")
-            return None
-            
-    def cleanup_old_backups(self, folder_id):
-        """Remove backups antigos, mantendo apenas os 5 mais recentes"""
-        try:
-            query = f"'{folder_id}' in parents and name contains 'backup_focos_qualificados' and trashed=false"
-            results = self.drive_service.files().list(
-                q=query, 
-                fields="files(id, name, createdTime)",
-                orderBy="createdTime desc"
-            ).execute()
-            
-            files = results.get('files', [])
-            
-            if len(files) > 5:
-                files_to_delete = files[5:]  # Manter apenas os 5 mais recentes
-                for file in files_to_delete:
-                    try:
-                        self.drive_service.files().delete(fileId=file['id']).execute()
-                        print(f"   🗑️ Backup antigo removido: {file['name']}")
-                    except:
-                        pass
-                        
-        except Exception as e:
-            print(f"   ⚠️ Erro ao limpar backups: {e}")
-            
-    def create_public_link(self, file_id):
-        """Torna o arquivo público e retorna link direto"""
-        try:
-            # Tornar público
-            self.drive_service.permissions().create(
-                fileId=file_id,
-                body={'role': 'reader', 'type': 'anyone'}
-            ).execute()
-            
-            # Retornar link direto
-            public_link = f"https://drive.google.com/uc?id={file_id}&export=download"
-            print(f"   🌐 Link público gerado: {public_link}")
-            return public_link
-            
-        except Exception as e:
-            print(f"   ⚠️ Erro ao criar link público: {e}")
-            return None
-            
-    def save_public_link(self, public_link):
-        """Salva o link público em arquivo para o site usar"""
-        if public_link:
-            try:
-                link_info = {
-                    "public_url": public_link,
-                    "last_updated": datetime.now().isoformat(),
-                    "description": "Link direto para o arquivo principal de focos de calor do Maranhão"
-                }
-                
-                # Salvar no diretório temporário (será commitado pelo GitHub Actions)
-                os.makedirs('data', exist_ok=True)
-                with open('data/current_data_link.json', 'w') as f:
-                    json.dump(link_info, f, indent=2)
-                    
-                print(f"   📝 Link salvo em: data/current_data_link.json")
-                
-            except Exception as e:
-                print(f"   ⚠️ Erro ao salvar link: {e}")#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Processamento automatizado de focos de calor do Maranhão
@@ -472,12 +379,6 @@ class FocosCalorProcessor:
                 except Exception as e:
                     print(f"      ❌ Erro no join {chave}: {e}")
         
-        # Processar UCs se existir pasta
-        ucs_pasta = os.path.join(self.temp_dir, 'spatial_ref', 'ucs')
-        if os.path.exists(ucs_pasta) or self.check_ucs_folder(spatial_refs):
-            print("   🏞️ Processando Unidades de Conservação...")
-            gdf_result = self.process_ucs_folder(gdf_result, spatial_refs)
-        
         # Limpeza final
         if "index_right" in gdf_result.columns:
             gdf_result.drop(columns=["index_right"], inplace=True)
@@ -492,16 +393,6 @@ class FocosCalorProcessor:
             print(f"   📝 Colunas adicionadas: {list(new_columns)}")
             
         return gdf_result
-        
-    def check_ucs_folder(self, spatial_refs):
-        """Verifica se existe referência para UCs"""
-        # Implementar se necessário buscar UCs em pasta específica
-        return False
-        
-    def process_ucs_folder(self, gdf_focos, spatial_refs):
-        """Processa Unidades de Conservação se disponível"""
-        # Implementar conforme necessário
-        return gdf_focos
         
     def export_results(self, gdf_final, results_folder_id):
         """Exporta resultado com estratégia híbrida: arquivo principal + backup"""
@@ -555,7 +446,102 @@ class FocosCalorProcessor:
         except Exception as e:
             print(f"❌ ERRO na exportação: {e}")
             return False
+
+    def update_main_file(self, local_path, folder_id, filename):
+        """Atualiza o arquivo principal (mesmo ID, conteúdo novo)"""
+        try:
+            # Buscar arquivo principal existente
+            query = f"'{folder_id}' in parents and name='{filename}' and trashed=false"
+            results = self.drive_service.files().list(q=query, fields="files(id, name)").execute()
             
+            files = results.get('files', [])
+            
+            if files:
+                # Atualizar arquivo existente
+                file_id = files[0]['id']
+                media = MediaFileUpload(local_path, resumable=True)
+                updated_file = self.drive_service.files().update(
+                    fileId=file_id, media_body=media
+                ).execute()
+                print(f"   ✅ Arquivo principal atualizado: {filename} (ID: {file_id})")
+                return file_id
+            else:
+                # Criar novo arquivo principal
+                file_metadata = {'name': filename, 'parents': [folder_id]}
+                media = MediaFileUpload(local_path, resumable=True)
+                file = self.drive_service.files().create(
+                    body=file_metadata, media_body=media, fields='id,name'
+                ).execute()
+                file_id = file.get('id')
+                print(f"   ✅ Arquivo principal criado: {filename} (ID: {file_id})")
+                return file_id
+                
+        except Exception as e:
+            print(f"   ❌ Erro ao atualizar arquivo principal: {e}")
+            return None
+            
+    def cleanup_old_backups(self, folder_id):
+        """Remove backups antigos, mantendo apenas os 5 mais recentes"""
+        try:
+            query = f"'{folder_id}' in parents and name contains 'backup_focos_qualificados' and trashed=false"
+            results = self.drive_service.files().list(
+                q=query, 
+                fields="files(id, name, createdTime)",
+                orderBy="createdTime desc"
+            ).execute()
+            
+            files = results.get('files', [])
+            
+            if len(files) > 5:
+                files_to_delete = files[5:]  # Manter apenas os 5 mais recentes
+                for file in files_to_delete:
+                    try:
+                        self.drive_service.files().delete(fileId=file['id']).execute()
+                        print(f"   🗑️ Backup antigo removido: {file['name']}")
+                    except:
+                        pass
+                        
+        except Exception as e:
+            print(f"   ⚠️ Erro ao limpar backups: {e}")
+            
+    def create_public_link(self, file_id):
+        """Torna o arquivo público e retorna link direto"""
+        try:
+            # Tornar público
+            self.drive_service.permissions().create(
+                fileId=file_id,
+                body={'role': 'reader', 'type': 'anyone'}
+            ).execute()
+            
+            # Retornar link direto
+            public_link = f"https://drive.google.com/uc?id={file_id}&export=download"
+            print(f"   🌐 Link público gerado: {public_link}")
+            return public_link
+            
+        except Exception as e:
+            print(f"   ⚠️ Erro ao criar link público: {e}")
+            return None
+            
+    def save_public_link(self, public_link):
+        """Salva o link público em arquivo para o site usar"""
+        if public_link:
+            try:
+                link_info = {
+                    "public_url": public_link,
+                    "last_updated": datetime.now().isoformat(),
+                    "description": "Link direto para o arquivo principal de focos de calor do Maranhão"
+                }
+                
+                # Salvar no diretório temporário (será commitado pelo GitHub Actions)
+                os.makedirs('data', exist_ok=True)
+                with open('data/current_data_link.json', 'w') as f:
+                    json.dump(link_info, f, indent=2)
+                    
+                print(f"   📝 Link salvo em: data/current_data_link.json")
+                
+            except Exception as e:
+                print(f"   ⚠️ Erro ao salvar link: {e}")
+                
     def upload_to_drive(self, local_path, folder_id, filename):
         """Upload simples para Drive"""
         try:
