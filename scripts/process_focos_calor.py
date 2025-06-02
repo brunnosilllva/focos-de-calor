@@ -1,4 +1,41 @@
-#!/usr/bin/env python3
+def process_ucs(self, gdf_focos, ucs_folder, crs_alvo):
+        """Processa Unidades de Conservação conforme script original"""
+        try:
+            # Inicializar coluna UC
+            gdf_focos["UC"] = ""
+            
+            # Buscar por arquivos de UC no diretório
+            uc_files = [f for f in os.listdir(ucs_folder) if f.endswith('.shp')]
+            
+            for uc_file in uc_files:
+                uc_path = os.path.join(ucs_folder, uc_file)
+                uc_nome = uc_file.replace('.shp', '').replace(' ', '_')
+                
+                try:
+                    gdf_uc = gpd.read_file(uc_path)
+                    if gdf_uc.crs is None:
+                        gdf_uc.set_crs(crs_alvo, inplace=True)
+                    elif gdf_uc.crs != crs_alvo:
+                        gdf_uc = gdf_uc.to_crs(crs_alvo)
+                    
+                    # Criar máscara para pontos dentro da UC
+                    mask = gdf_focos.geometry.within(gdf_uc.union_all())
+                    
+                    # Concatenar nomes de UCs sobrepostas
+                    gdf_focos.loc[mask, "UC"] = gdf_focos.loc[mask, "UC"].astype(str) + ", " + uc_nome
+                    
+                    print(f"      ✅ UC processada: {uc_nome} ({mask.sum()} focos)")
+                    
+                except Exception as e:
+                    print(f"      ⚠️ Erro ao processar UC {uc_nome}: {e}")
+            
+            # Limpar vírgulas extras no início
+            gdf_focos["UC"] = gdf_focos["UC"].str.lstrip(", ")
+            
+        except Exception as e:
+            print(f"⚠️ Erro ao processar UCs: {e}")
+            
+        return gdf_focos#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Processamento automatizado de focos de calor do Maranhão
@@ -119,67 +156,97 @@ class FocosCalorProcessor:
                 
     def download_spatial_references(self, ref_folder_id):
         """Baixa os arquivos de referência espacial"""
+        print("📍 Baixando referências espaciais...")
+        
         # Estrutura dos arquivos espaciais conforme script original
         spatial_files = {
-            "uf": "Unidades da Federação.shp",
-            "municipios": "Municipios_2023.shp", 
-            "biomas": "lm_bioma_250.shp",
-            "terras_indigenas": "Terras Indigenas.shp",
-            "uso_solo": "MA_2023_DISSOLVE_REPROJETADO.shp",
-            "zee": "Zonas_atualizada_MA.shp"
+            "uf": ["Unidades da Federação", "UF", "Estados"],
+            "municipios": ["Municipios_2023", "Municipios", "municipios"],
+            "biomas": ["lm_bioma_250", "Biomas", "biomas"],
+            "terras_indigenas": ["Terras Indigenas", "terras_indigenas", "indigenas"],
+            "uso_solo": ["MA_2023_DISSOLVE_REPROJETADO", "Uso do Solo", "uso_solo"],
+            "zee": ["Zonas_atualizada_MA", "Zonas do Zee", "zee"]
         }
         
-        # Buscar todos os arquivos .shp na pasta de referências
-        query = f"'{ref_folder_id}' in parents and name contains '.shp' and trashed=false"
-        results = self.drive_service.files().list(
-            q=query,
-            fields="files(id, name, parents)"
+        # Buscar subpastas primeiro
+        subfolders_query = f"'{ref_folder_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        subfolders_results = self.drive_service.files().list(
+            q=subfolders_query,
+            fields="files(id, name)"
         ).execute()
         
         downloaded_refs = {}
         
-        # Baixar arquivos encontrados
-        for file_info in results.get('files', []):
-            file_name = file_info['name']
+        # Processar cada subpasta
+        for subfolder in subfolders_results.get('files', []):
+            folder_name = subfolder['name']
+            folder_id = subfolder['id']
+            print(f"🔍 Processando pasta: {folder_name}")
             
-            # Criar pasta local para o arquivo
-            base_name = file_name.replace('.shp', '')
-            local_folder = os.path.join(self.temp_dir, 'spatial_ref', base_name)
-            os.makedirs(local_folder, exist_ok=True)
+            # Buscar arquivos .shp na subpasta
+            shp_query = f"'{folder_id}' in parents and name contains '.shp' and trashed=false"
+            shp_results = self.drive_service.files().list(
+                q=shp_query,
+                fields="files(id, name)"
+            ).execute()
             
-            # Baixar todos os arquivos relacionados (.shp, .shx, .dbf, .prj, etc.)
-            self.download_shapefile_complete(file_info['id'], local_folder, base_name)
-            
-            # Mapear para a estrutura esperada
-            shp_path = os.path.join(local_folder, f"{base_name}.shp")
-            if os.path.exists(shp_path):
-                for key, expected_name in spatial_files.items():
-                    if expected_name.replace('.shp', '') in base_name:
-                        downloaded_refs[key] = shp_path
-                        print(f"📍 Referência espacial mapeada: {key} -> {base_name}")
-                        break
+            for shp_file in shp_results.get('files', []):
+                file_name = shp_file['name']
+                base_name = file_name.replace('.shp', '')
+                
+                # Mapear para o tipo correto
+                for ref_type, possible_names in spatial_files.items():
+                    if any(name.lower() in base_name.lower() or name.lower() in folder_name.lower() 
+                           for name in possible_names):
                         
+                        # Criar pasta local
+                        local_folder = os.path.join(self.temp_dir, 'spatial_ref', ref_type)
+                        os.makedirs(local_folder, exist_ok=True)
+                        
+                        # Baixar shapefile completo
+                        success = self.download_shapefile_complete(shp_file['id'], local_folder, base_name, folder_id)
+                        
+                        if success:
+                            shp_path = os.path.join(local_folder, f"{base_name}.shp")
+                            downloaded_refs[ref_type] = shp_path
+                            print(f"✅ {ref_type}: {file_name}")
+                        break
+        
+        print(f"📋 Referências baixadas: {list(downloaded_refs.keys())}")
         return downloaded_refs
         
-    def download_shapefile_complete(self, shp_file_id, local_folder, base_name):
+    def download_shapefile_complete(self, shp_file_id, local_folder, base_name, parent_folder_id=None):
         """Baixa todos os arquivos relacionados a um shapefile"""
-        # Encontrar pasta pai do arquivo .shp
-        shp_file = self.drive_service.files().get(fileId=shp_file_id, fields="parents").execute()
-        parent_folder = shp_file['parents'][0]
-        
-        # Buscar todos os arquivos relacionados
-        extensions = ['.shp', '.shx', '.dbf', '.prj', '.cpg', '.sbn', '.sbx']
-        
-        for ext in extensions:
-            query = f"'{parent_folder}' in parents and name contains '{base_name}{ext}' and trashed=false"
-            results = self.drive_service.files().list(q=query, fields="files(id, name)").execute()
+        try:
+            # Se não temos o parent_folder_id, buscar
+            if not parent_folder_id:
+                shp_file = self.drive_service.files().get(fileId=shp_file_id, fields="parents").execute()
+                parent_folder_id = shp_file['parents'][0]
             
-            for file_info in results.get('files', []):
-                local_path = os.path.join(local_folder, file_info['name'])
-                try:
-                    self.download_file(file_info['id'], local_path)
-                except Exception as e:
-                    print(f"⚠️ Não foi possível baixar {file_info['name']}: {e}")
+            # Extensões de arquivos shapefile
+            extensions = ['.shp', '.shx', '.dbf', '.prj', '.cpg', '.sbn', '.sbx']
+            downloaded_count = 0
+            
+            for ext in extensions:
+                query = f"'{parent_folder_id}' in parents and name contains '{base_name}{ext}' and trashed=false"
+                results = self.drive_service.files().list(q=query, fields="files(id, name)").execute()
+                
+                for file_info in results.get('files', []):
+                    local_path = os.path.join(local_folder, file_info['name'])
+                    try:
+                        self.download_file(file_info['id'], local_path)
+                        downloaded_count += 1
+                    except Exception as e:
+                        if ext in ['.shp', '.shx', '.dbf']:  # Arquivos essenciais
+                            print(f"⚠️ Erro ao baixar arquivo essencial {file_info['name']}: {e}")
+                            return False
+                        else:
+                            print(f"⚠️ Arquivo opcional {file_info['name']} não baixado: {e}")
+            
+            return downloaded_count > 0
+        except Exception as e:
+            print(f"❌ Erro ao baixar shapefile {base_name}: {e}")
+            return False
                     
     def process_heat_focus_data(self):
         """Processo principal - replica a lógica do script original"""
@@ -208,14 +275,24 @@ class FocosCalorProcessor:
             
         # 3. Carregar e unificar dados de focos
         lista_df = []
+        total_files_processed = 0
+        total_files_empty = 0
+        
         for csv_file in csv_files:
             try:
                 df = pd.read_csv(csv_file)
-                if not df.empty:
+                if not df.empty and len(df) > 0:
                     lista_df.append(df)
+                    total_files_processed += 1
                     print(f"✅ Carregado: {os.path.basename(csv_file)} ({len(df)} registros)")
+                else:
+                    total_files_empty += 1
+                    print(f"⚠️ Arquivo vazio: {os.path.basename(csv_file)}")
             except Exception as e:
-                print(f"⚠️ Erro ao carregar {csv_file}: {e}")
+                total_files_empty += 1
+                print(f"⚠️ Erro ao carregar {os.path.basename(csv_file)}: {e}")
+                
+        print(f"📊 Resumo: {total_files_processed} arquivos processados, {total_files_empty} vazios/erro")
                 
         if not lista_df:
             print("❌ Nenhum dado válido encontrado nos arquivos CSV")
@@ -247,8 +324,14 @@ class FocosCalorProcessor:
         
         # 6. Baixar e processar referências espaciais (se disponível)
         if ref_folder_id:
+            print("📍 Processando referências espaciais...")
             spatial_refs = self.download_spatial_references(ref_folder_id)
-            gdf_final = self.apply_spatial_joins(gdf_focos, spatial_refs)
+            if spatial_refs:
+                gdf_final = self.apply_spatial_joins(gdf_focos, spatial_refs)
+                print(f"✅ Joins espaciais aplicados com {len(spatial_refs)} referências")
+            else:
+                print("⚠️ Nenhuma referência espacial encontrada, usando apenas dados básicos")
+                gdf_final = gdf_focos
         else:
             print("⚠️ Pasta de referências espaciais não encontrada, usando apenas dados básicos")
             gdf_final = gdf_focos
@@ -270,31 +353,61 @@ class FocosCalorProcessor:
         for chave, caminho in spatial_refs.items():
             if os.path.exists(caminho):
                 try:
+                    print(f"   Carregando {chave} de {caminho}")
                     gdf = gpd.read_file(caminho, encoding='utf-8')
+                    print(f"   📊 {chave}: {len(gdf)} geometrias carregadas")
                 except UnicodeDecodeError:
                     gdf = gpd.read_file(caminho, encoding='latin1')
+                    print(f"   📊 {chave}: {len(gdf)} geometrias carregadas (latin1)")
+                except Exception as e:
+                    print(f"   ❌ Erro ao carregar {chave}: {e}")
+                    continue
                     
                 if gdf.crs is not None and gdf.crs != crs_alvo:
                     gdf = gdf.to_crs(crs_alvo)
                     
                 dados_espaciais[chave] = gdf
-                print(f"📍 Carregado: {chave}")
+                print(f"   ✅ {chave} preparado para join")
                 
-        # Aplicar joins espaciais (lógica do script original)
+        if not dados_espaciais:
+            print("⚠️ Nenhuma referência espacial válida carregada")
+            return gdf_result
+            
+        # Aplicar joins espaciais conforme script original
+        joins_realizados = 0
         for chave in ['uf', 'municipios', 'biomas', 'terras_indigenas', 'uso_solo', 'zee']:
             if chave in dados_espaciais:
-                if "index_right" in gdf_result.columns:
-                    gdf_result.drop(columns=["index_right"], inplace=True)
-                    
                 try:
-                    gdf_result = gdf_result.sjoin(dados_espaciais[chave], how="left", predicate="within")
-                    print(f"✅ Join espacial aplicado: {chave}")
-                except Exception as e:
-                    print(f"⚠️ Erro no join espacial {chave}: {e}")
+                    # Limpar colunas de join anterior
+                    if "index_right" in gdf_result.columns:
+                        gdf_result.drop(columns=["index_right"], inplace=True)
+                        
+                    print(f"   🔗 Aplicando join: {chave}")
+                    original_cols = set(gdf_result.columns)
                     
+                    gdf_result = gdf_result.sjoin(dados_espaciais[chave], how="left", predicate="within")
+                    
+                    new_cols = set(gdf_result.columns) - original_cols
+                    if new_cols:
+                        print(f"      ✅ Novas colunas: {list(new_cols)}")
+                        joins_realizados += 1
+                    else:
+                        print(f"      ⚠️ Nenhuma coluna nova adicionada")
+                        
+                except Exception as e:
+                    print(f"   ❌ Erro no join espacial {chave}: {e}")
+                    
+        # Processar UCs (Unidades de Conservação) se existir pasta
+        ucs_folder = os.path.join(self.temp_dir, 'spatial_ref', 'ucs')
+        if os.path.exists(ucs_folder):
+            print("   🏞️ Processando Unidades de Conservação...")
+            gdf_result = self.process_ucs(gdf_result, ucs_folder, crs_alvo)
+            
+        # Limpar coluna de índice final
         if "index_right" in gdf_result.columns:
             gdf_result.drop(columns=["index_right"], inplace=True)
             
+        print(f"✅ Joins espaciais concluídos: {joins_realizados} referências aplicadas")
         return gdf_result
         
     def export_results(self, gdf_final, results_folder_id):
@@ -313,20 +426,27 @@ class FocosCalorProcessor:
             # Exportar Excel
             df_final = gdf_final.drop(columns="geometry")
             df_final.to_excel(excel_path, index=False)
-            print(f"📊 Excel criado: {excel_filename}")
+            print(f"📊 Excel criado: {excel_filename} ({len(df_final)} registros)")
             
             # Exportar Shapefile  
             gdf_final.to_file(shp_path, driver="ESRI Shapefile")
             print(f"🗺️ Shapefile criado: {shp_filename}")
             
-            # Upload para Google Drive
+            # Upload para Google Drive (APENAS UMA VEZ)
             if results_folder_id:
-                self.upload_file_to_drive(excel_path, results_folder_id, excel_filename)
+                print("📤 Fazendo upload dos resultados...")
+                
+                # Upload do Excel
+                excel_file_id = self.upload_file_to_drive(excel_path, results_folder_id, excel_filename)
+                
+                # Upload do Shapefile completo
                 self.upload_shapefile_to_drive(shp_path, results_folder_id, shp_filename)
+                
+                print(f"✅ Upload concluído para pasta: {results_folder_id}")
             else:
                 print("⚠️ Pasta de resultados não encontrada, arquivos não foram enviados ao Drive")
                 
-            print(f"✅ Processo concluído! {len(gdf_final)} registros processados")
+            print(f"🎉 Processamento concluído! {len(gdf_final)} registros processados")
             return True
             
         except Exception as e:
@@ -336,6 +456,25 @@ class FocosCalorProcessor:
     def upload_file_to_drive(self, local_path, folder_id, filename):
         """Faz upload de um arquivo para o Google Drive"""
         try:
+            # Verificar se já existe arquivo com nome similar (para evitar duplicatas)
+            base_name = filename.split('_')[0] + '_' + filename.split('_')[1]  # ex: focos_qualificados
+            existing_query = f"'{folder_id}' in parents and name contains '{base_name}' and trashed=false"
+            existing_results = self.drive_service.files().list(
+                q=existing_query,
+                fields="files(id, name, createdTime)"
+            ).execute()
+            
+            # Remover arquivos antigos (manter apenas os 5 mais recentes)
+            if len(existing_results.get('files', [])) >= 5:
+                files_sorted = sorted(existing_results['files'], 
+                                    key=lambda x: x['createdTime'], reverse=True)
+                for old_file in files_sorted[4:]:  # Manter apenas 5 mais recentes
+                    try:
+                        self.drive_service.files().delete(fileId=old_file['id']).execute()
+                        print(f"🗑️ Arquivo antigo removido: {old_file['name']}")
+                    except:
+                        pass
+            
             file_metadata = {
                 'name': filename,
                 'parents': [folder_id]
@@ -349,9 +488,11 @@ class FocosCalorProcessor:
             ).execute()
             
             print(f"📤 Upload concluído: {filename} (ID: {file.get('id')})")
+            return file.get('id')
             
         except Exception as e:
             print(f"❌ Erro no upload de {filename}: {e}")
+            return None
             
     def upload_shapefile_to_drive(self, shp_path, folder_id, base_filename):
         """Faz upload de todos os arquivos relacionados ao shapefile"""
