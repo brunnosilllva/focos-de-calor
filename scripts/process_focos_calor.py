@@ -1,4 +1,97 @@
-#!/usr/bin/env python3
+def update_main_file(self, local_path, folder_id, filename):
+        """Atualiza o arquivo principal (mesmo ID, conteúdo novo)"""
+        try:
+            # Buscar arquivo principal existente
+            query = f"'{folder_id}' in parents and name='{filename}' and trashed=false"
+            results = self.drive_service.files().list(q=query, fields="files(id, name)").execute()
+            
+            files = results.get('files', [])
+            
+            if files:
+                # Atualizar arquivo existente
+                file_id = files[0]['id']
+                media = MediaFileUpload(local_path, resumable=True)
+                updated_file = self.drive_service.files().update(
+                    fileId=file_id, media_body=media
+                ).execute()
+                print(f"   ✅ Arquivo principal atualizado: {filename} (ID: {file_id})")
+                return file_id
+            else:
+                # Criar novo arquivo principal
+                file_metadata = {'name': filename, 'parents': [folder_id]}
+                media = MediaFileUpload(local_path, resumable=True)
+                file = self.drive_service.files().create(
+                    body=file_metadata, media_body=media, fields='id,name'
+                ).execute()
+                file_id = file.get('id')
+                print(f"   ✅ Arquivo principal criado: {filename} (ID: {file_id})")
+                return file_id
+                
+        except Exception as e:
+            print(f"   ❌ Erro ao atualizar arquivo principal: {e}")
+            return None
+            
+    def cleanup_old_backups(self, folder_id):
+        """Remove backups antigos, mantendo apenas os 5 mais recentes"""
+        try:
+            query = f"'{folder_id}' in parents and name contains 'backup_focos_qualificados' and trashed=false"
+            results = self.drive_service.files().list(
+                q=query, 
+                fields="files(id, name, createdTime)",
+                orderBy="createdTime desc"
+            ).execute()
+            
+            files = results.get('files', [])
+            
+            if len(files) > 5:
+                files_to_delete = files[5:]  # Manter apenas os 5 mais recentes
+                for file in files_to_delete:
+                    try:
+                        self.drive_service.files().delete(fileId=file['id']).execute()
+                        print(f"   🗑️ Backup antigo removido: {file['name']}")
+                    except:
+                        pass
+                        
+        except Exception as e:
+            print(f"   ⚠️ Erro ao limpar backups: {e}")
+            
+    def create_public_link(self, file_id):
+        """Torna o arquivo público e retorna link direto"""
+        try:
+            # Tornar público
+            self.drive_service.permissions().create(
+                fileId=file_id,
+                body={'role': 'reader', 'type': 'anyone'}
+            ).execute()
+            
+            # Retornar link direto
+            public_link = f"https://drive.google.com/uc?id={file_id}&export=download"
+            print(f"   🌐 Link público gerado: {public_link}")
+            return public_link
+            
+        except Exception as e:
+            print(f"   ⚠️ Erro ao criar link público: {e}")
+            return None
+            
+    def save_public_link(self, public_link):
+        """Salva o link público em arquivo para o site usar"""
+        if public_link:
+            try:
+                link_info = {
+                    "public_url": public_link,
+                    "last_updated": datetime.now().isoformat(),
+                    "description": "Link direto para o arquivo principal de focos de calor do Maranhão"
+                }
+                
+                # Salvar no diretório temporário (será commitado pelo GitHub Actions)
+                os.makedirs('data', exist_ok=True)
+                with open('data/current_data_link.json', 'w') as f:
+                    json.dump(link_info, f, indent=2)
+                    
+                print(f"   📝 Link salvo em: data/current_data_link.json")
+                
+            except Exception as e:
+                print(f"   ⚠️ Erro ao salvar link: {e}")#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Processamento automatizado de focos de calor do Maranhão
@@ -411,35 +504,50 @@ class FocosCalorProcessor:
         return gdf_focos
         
     def export_results(self, gdf_final, results_folder_id):
-        """Exporta resultado final"""
-        print("💾 EXPORTANDO RESULTADOS FINAIS...")
+        """Exporta resultado com estratégia híbrida: arquivo principal + backup"""
+        print("💾 EXPORTANDO RESULTADOS - ESTRATÉGIA HÍBRIDA...")
         
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            excel_filename = f"focos_qualificados_{timestamp}.xlsx"
-            shp_filename = f"focos_qualificados_{timestamp}"
             
-            excel_path = os.path.join(self.temp_dir, excel_filename)
-            shp_path = os.path.join(self.temp_dir, f"{shp_filename}.shp")
+            # ARQUIVO PRINCIPAL (fixo para o site)
+            main_excel_name = "focos_qualificados_atual.xlsx"
+            main_shp_name = "focos_qualificados_atual"
             
-            # Preparar dados para Excel (sem geometria)
+            # ARQUIVO BACKUP (com timestamp)
+            backup_excel_name = f"backup_focos_qualificados_{timestamp}.xlsx"
+            backup_shp_name = f"backup_focos_qualificados_{timestamp}"
+            
+            excel_path = os.path.join(self.temp_dir, main_excel_name)
+            shp_path = os.path.join(self.temp_dir, f"{main_shp_name}.shp")
+            
+            # Preparar dados
             df_final = gdf_final.drop(columns="geometry")
             
-            print(f"📊 Exportando Excel: {len(df_final)} registros, {len(df_final.columns)} colunas")
+            print(f"📊 Exportando: {len(df_final)} registros, {len(df_final.columns)} colunas")
             print(f"📋 Colunas: {list(df_final.columns)}")
             
-            # Exportar Excel
+            # Criar arquivos locais
             df_final.to_excel(excel_path, index=False)
-            print(f"✅ Excel criado: {excel_filename}")
-            
-            # Exportar Shapefile
             gdf_final.to_file(shp_path, driver="ESRI Shapefile")
-            print(f"✅ Shapefile criado: {shp_filename}.shp")
             
-            # Upload para Drive
             if results_folder_id:
-                self.upload_to_drive(excel_path, results_folder_id, excel_filename)
-                self.upload_shapefile_complete(shp_path, results_folder_id, shp_filename)
+                # 1. ATUALIZAR ARQUIVO PRINCIPAL (para o site)
+                print("📤 Atualizando arquivo principal para o site...")
+                main_file_id = self.update_main_file(excel_path, results_folder_id, main_excel_name)
+                
+                # 2. CRIAR BACKUP COM TIMESTAMP
+                print("💾 Criando backup histórico...")
+                self.upload_to_drive(excel_path, results_folder_id, backup_excel_name)
+                self.upload_shapefile_complete(shp_path, results_folder_id, backup_shp_name)
+                
+                # 3. LIMPAR BACKUPS ANTIGOS (manter apenas 5)
+                self.cleanup_old_backups(results_folder_id)
+                
+                # 4. GERAR LINK PÚBLICO FIXO
+                if main_file_id:
+                    public_link = self.create_public_link(main_file_id)
+                    self.save_public_link(public_link)
                 
             print(f"🎉 PROCESSO CONCLUÍDO: {len(gdf_final)} registros processados")
             return True
