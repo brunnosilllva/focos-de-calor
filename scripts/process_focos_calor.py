@@ -37,6 +37,8 @@ class FocosCalorProcessor:
         
     def find_folder_by_path(self, folder_path):
         """Encontra uma pasta pelo caminho relativo"""
+        print("🔍 Buscando pastas no Google Drive...")
+        
         # Para simplificar, vamos procurar pelas pastas principais
         folders_map = {
             "1. Focos": None,
@@ -50,10 +52,40 @@ class FocosCalorProcessor:
             fields="files(id, name, parents)"
         ).execute()
         
+        print(f"📁 Encontradas {len(results.get('files', []))} pastas compartilhadas:")
         for folder in results.get('files', []):
-            if folder['name'] in folders_map:
-                folders_map[folder['name']] = folder['id']
+            print(f"   - {folder['name']} (ID: {folder['id']})")
+            
+        # Também buscar pastas que a service account pode acessar (não apenas compartilhadas)
+        all_results = self.drive_service.files().list(
+            q="mimeType='application/vnd.google-apps.folder'",
+            fields="files(id, name, parents)"
+        ).execute()
+        
+        print(f"📂 Total de pastas acessíveis: {len(all_results.get('files', []))}")
+        
+        # Procurar por nome exato e parcial
+        for folder in all_results.get('files', []):
+            folder_name = folder['name']
+            print(f"   Verificando: '{folder_name}'")
+            
+            # Verificação exata
+            if folder_name in folders_map:
+                folders_map[folder_name] = folder['id']
+                print(f"✅ Pasta encontrada (exata): {folder_name}")
+            
+            # Verificação parcial para nomes similares
+            elif "Focos" in folder_name or "focos" in folder_name:
+                folders_map["1. Focos"] = folder['id']
+                print(f"✅ Pasta de focos encontrada (similar): {folder_name}")
+            elif "Referências" in folder_name or "referencias" in folder_name:
+                folders_map["2. Referências Espaciais"] = folder['id']
+                print(f"✅ Pasta de referências encontrada (similar): {folder_name}")
+            elif "Resultados" in folder_name or "resultados" in folder_name:
+                folders_map["3. Resultados"] = folder['id']
+                print(f"✅ Pasta de resultados encontrada (similar): {folder_name}")
                 
+        print(f"📋 Mapeamento final: {folders_map}")
         return folders_map
         
     def download_files_from_folder(self, folder_id, file_extension='.csv'):
@@ -160,7 +192,12 @@ class FocosCalorProcessor:
         results_folder_id = folders.get("3. Resultados")
         
         if not focos_folder_id:
-            raise Exception("❌ Pasta '1. Focos' não encontrada no Drive")
+            print("❌ Pasta de focos não encontrada no Drive")
+            print("💡 Verifique se:")
+            print("   1. As pastas estão compartilhadas com a service account")
+            print("   2. O email da service account tem permissão de visualização")
+            print("   3. Os nomes das pastas estão corretos")
+            return False
             
         # 2. Baixar arquivos CSV de focos
         csv_files = self.download_files_from_folder(focos_folder_id, '.csv')
