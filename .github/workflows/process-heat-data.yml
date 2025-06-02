@@ -47,12 +47,13 @@ jobs:
     - name: Cleanup credentials
       run: rm -f credentials.json
       
-    - name: Commit logs (optional)
+    - name: Commit data link (for website)
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        mkdir -p logs
+        mkdir -p logs data
         echo "$(date): Processo executado com sucesso" >> logs/execution_log.txt
         git add logs/execution_log.txt
-        git diff --staged --quiet || git commit -m "Log: Processamento de focos $(date)"
+        git add data/current_data_link.json || true
+        git diff --staged --quiet || git commit -m "Update: Processamento de focos $(date)"
         git push || true
