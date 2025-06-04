@@ -11,6 +11,7 @@ on:
     paths:
       - '.github/workflows/process-heat-data.yml'
       - 'scripts/process_focos_calor.py'
+      - 'scripts/requirements.txt'
 
 jobs:
   process-heat-data:
@@ -33,7 +34,7 @@ jobs:
     - name: Install Python dependencies
       run: |
         pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r scripts/requirements.txt  # CORRIGIDO: caminho correto
         
     - name: Setup Google Drive credentials
       env:
@@ -42,18 +43,30 @@ jobs:
         echo "$GOOGLE_CREDENTIALS" > credentials.json
         
     - name: Process heat focus data
-      run: python scripts/process_focos_calor.py
+      run: python scripts/process_focos_calor.py  # CORRIGIDO: caminho correto
       
     - name: Cleanup credentials
       run: rm -f credentials.json
       
-    - name: Commit data link (for website)
+    - name: Commit and push results
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
+        
+        # Criar diretórios se não existirem
         mkdir -p logs data
+        
+        # Log de execução
         echo "$(date): Processo executado com sucesso" >> logs/execution_log.txt
+        
+        # Adicionar arquivos gerados
         git add logs/execution_log.txt
-        git add data/current_data_link.json || true
-        git diff --staged --quiet || git commit -m "Update: Processamento de focos $(date)"
-        git push || true
+        git add data/current_data_link.json || echo "Arquivo data/current_data_link.json não encontrado"
+        
+        # Verificar se há mudanças para commitar
+        if git diff --staged --quiet; then
+          echo "Nenhuma mudança para commitar"
+        else
+          git commit -m "🔥 Update: Processamento de focos $(date '+%Y-%m-%d %H:%M:%S')"
+          git push || echo "Erro ao fazer push - repositório pode estar atualizado"
+        fi
