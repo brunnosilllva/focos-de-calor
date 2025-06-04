@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Processamento automatizado de focos de calor do Maranhão
-Adaptado do script original do Google Colab para GitHub Actions
-PRIORIDADE: Processar TODOS os dados e aplicar joins espaciais
-"""
-
 import os
 import pandas as pd
 import geopandas as gpd
@@ -25,6 +17,7 @@ class FocosCalorProcessor:
         """Inicializa o processador com as credenciais do Google Drive"""
         self.setup_drive_service(credentials_path)
         self.temp_dir = tempfile.mkdtemp()
+        self.dados_processados = None  # Para rastrear dados processados
         print(f"📁 Diretório temporário criado: {self.temp_dir}")
         
     def setup_drive_service(self, credentials_path):
@@ -399,6 +392,9 @@ class FocosCalorProcessor:
         print("💾 EXPORTANDO RESULTADOS - ESTRATÉGIA HÍBRIDA...")
         
         try:
+            # Salvar dados processados para uso posterior
+            self.dados_processados = gdf_final
+            
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
             # ARQUIVO PRINCIPAL (fixo para o site)
@@ -438,7 +434,7 @@ class FocosCalorProcessor:
                 # 4. GERAR LINK PÚBLICO FIXO
                 if main_file_id:
                     public_link = self.create_public_link(main_file_id)
-                    self.save_public_link(public_link)
+                    self.save_public_link_for_website(main_file_id)
                 
             print(f"🎉 PROCESSO CONCLUÍDO: {len(gdf_final)} registros processados")
             return True
@@ -478,6 +474,55 @@ class FocosCalorProcessor:
                 
         except Exception as e:
             print(f"   ❌ Erro ao atualizar arquivo principal: {e}")
+            return None
+
+    def save_public_link_for_website(self, file_id):
+        """NOVA FUNÇÃO: Salva o link público para o site React usar"""
+        try:
+            # Tornar o arquivo público (se ainda não for)
+            self.drive_service.permissions().create(
+                fileId=file_id,
+                body={'role': 'reader', 'type': 'anyone'}
+            ).execute()
+            
+            # Gerar link direto para download
+            public_link = f"https://drive.google.com/uc?id={file_id}&export=download"
+            
+            # Criar informações para o site
+            link_info = {
+                "public_url": public_link,
+                "file_id": file_id,
+                "filename": "focos_qualificados_atual.xlsx",
+                "last_updated": datetime.now().isoformat(),
+                "total_records": len(self.dados_processados) if self.dados_processados is not None else 0,
+                "description": "Dados de focos de calor do Maranhão processados automaticamente",
+                "source": "INPE",
+                "processor": "IMESC",
+                "columns": list(self.dados_processados.columns) if self.dados_processados is not None else [],
+                "processing_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "geographic_bounds": {
+                    "north": float(self.dados_processados['lat'].max()) if self.dados_processados is not None else None,
+                    "south": float(self.dados_processados['lat'].min()) if self.dados_processados is not None else None,
+                    "east": float(self.dados_processados['lon'].max()) if self.dados_processados is not None else None,
+                    "west": float(self.dados_processados['lon'].min()) if self.dados_processados is not None else None
+                }
+            }
+            
+            # Criar diretório data se não existir
+            os.makedirs('data', exist_ok=True)
+            
+            # Salvar link para o site React usar
+            with open('data/current_data_link.json', 'w', encoding='utf-8') as f:
+                json.dump(link_info, f, indent=2, ensure_ascii=False)
+                
+            print(f"✅ Link público salvo: {public_link}")
+            print(f"📁 Arquivo disponível em: data/current_data_link.json")
+            print(f"📊 Total de registros: {link_info['total_records']}")
+            
+            return public_link
+            
+        except Exception as e:
+            print(f"❌ Erro ao salvar link público: {e}")
             return None
             
     def cleanup_old_backups(self, folder_id):
@@ -523,7 +568,7 @@ class FocosCalorProcessor:
             return None
             
     def save_public_link(self, public_link):
-        """Salva o link público em arquivo para o site usar"""
+        """Salva o link público em arquivo para o site usar (VERSÃO ANTIGA - mantida para compatibilidade)"""
         if public_link:
             try:
                 link_info = {
@@ -640,6 +685,9 @@ def main():
         
         if success:
             print("🎉 PROCESSAMENTO CONCLUÍDO COM SUCESSO!")
+            print("📊 Arquivo focos_qualificados_atual.xlsx atualizado")
+            print("🔗 Link público disponível em data/current_data_link.json")
+            print("🌐 Frontend React pode acessar os dados")
         else:
             print("❌ PROCESSAMENTO FALHOU!")
             
