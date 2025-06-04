@@ -1,1 +1,129 @@
-
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#FF6B35" />
+    
+    <!-- Meta tags principais -->
+    <meta name="description" content="Sistema de monitoramento em tempo real dos focos de calor no estado do Maranhão. Desenvolvido pelo IMESC com dados do INPE." />
+    <meta name="keywords" content="focos de calor, Maranhão, IMESC, monitoramento ambiental, INPE, queimadas, cerrado, amazônia" />
+    <meta name="author" content="IMESC - Instituto Maranhense de Estudos Socioeconômicos e Cartográficos" />
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://brunnosilllva.github.io/focos-de-calor/" />
+    <meta property="og:title" content="Focos de Calor - Maranhão | IMESC" />
+    <meta property="og:description" content="Sistema de monitoramento em tempo real dos focos de calor no estado do Maranhão" />
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.jpg" />
+    <meta property="og:site_name" content="Focos de Calor Maranhão" />
+    <meta property="og:locale" content="pt_BR" />
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://brunnosilllva.github.io/focos-de-calor/" />
+    <meta property="twitter:title" content="Focos de Calor - Maranhão | IMESC" />
+    <meta property="twitter:description" content="Sistema de monitoramento em tempo real dos focos de calor no estado do Maranhão" />
+    <meta property="twitter:image" content="%PUBLIC_URL%/og-image.jpg" />
+    
+    <!-- PWA -->
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Preconnect para performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+    
+    <!-- Favicon customizado -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23FF6B35'%3E%3Cpath d='M12 2C13.1 2 14 2.9 14 4C14 5.1 13.1 6 12 6C10.9 6 10 5.1 10 4C10 2.9 10.9 2 12 2ZM21 9V7L15 7C14.4 7 14 7.4 14 8V16C14 16.6 14.4 17 15 17H21V15H16V9H21ZM9 21V19H3V21H9ZM9 17V15H3V17H9ZM9 13V11H3V13H9ZM9 9V7H3V9H9Z'/%3E%3C/svg%3E" />
+    
+    <!-- Schema.org markup -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Focos de Calor - Maranhão",
+      "description": "Sistema de monitoramento em tempo real dos focos de calor no estado do Maranhão",
+      "url": "https://brunnosilllva.github.io/focos-de-calor/",
+      "applicationCategory": "Environmental Monitoring",
+      "operatingSystem": "Web",
+      "author": {
+        "@type": "Organization",
+        "name": "IMESC",
+        "url": "https://imesc.ma.gov.br"
+      },
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "BRL"
+      }
+    }
+    </script>
+    
+    <title>Focos de Calor - Maranhão | IMESC</title>
+  </head>
+  <body>
+    <noscript>
+      <div style="padding: 20px; text-align: center; background: #fee; color: #c33;">
+        <h2>JavaScript necessário</h2>
+        <p>Você precisa habilitar JavaScript para executar o sistema de monitoramento de focos de calor.</p>
+        <p>Este sistema utiliza tecnologias modernas para visualização de dados em tempo real.</p>
+      </div>
+    </noscript>
+    
+    <!-- Container principal da aplicação -->
+    <div id="root"></div>
+    
+    <!-- Loading fallback -->
+    <div id="loading-fallback" style="
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(135deg, #FEF7F0 0%, #EBF4FF 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    ">
+      <div style="
+        width: 60px;
+        height: 60px;
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #FF6B35;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      "></div>
+      <h2 style="color: #374151; margin: 0; font-size: 24px;">🔥 Focos de Calor</h2>
+      <p style="color: #6B7280; margin: 10px 0 0 0;">Carregando sistema de monitoramento...</p>
+    </div>
+    
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
+      /* Esconder loading quando React carregar */
+      #root:not(:empty) + #loading-fallback {
+        display: none;
+      }
+    </style>
+    
+    <!-- Analytics (opcional - remover se não usar) -->
+    <!-- 
+    <script async src="https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'GA_MEASUREMENT_ID');
+    </script>
+    -->
+  </body>
+</html>
