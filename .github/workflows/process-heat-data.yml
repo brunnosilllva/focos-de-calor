@@ -59,9 +59,21 @@ jobs:
         # Log de execução
         echo "$(date): Processo executado com sucesso" >> logs/execution_log.txt
         
+        # Verificar se o arquivo JSON foi criado
+        if [ -f "data/current_data_link.json" ]; then
+          echo "✅ Arquivo data/current_data_link.json encontrado"
+          cat data/current_data_link.json
+        else
+          echo "❌ Arquivo data/current_data_link.json NÃO encontrado"
+          ls -la data/ || echo "Diretório data/ não existe"
+        fi
+        
         # Adicionar arquivos gerados
         git add logs/execution_log.txt
-        git add data/current_data_link.json || echo "Arquivo data/current_data_link.json não encontrado"
+        git add data/ || echo "Erro ao adicionar diretório data/"
+        
+        # Verificar status
+        git status
         
         # Verificar se há mudanças para commitar
         if git diff --staged --quiet; then
