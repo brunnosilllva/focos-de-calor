@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { Flame, MapPin, Calendar, TrendingUp, Leaf, Shield, AlertTriangle, Zap, Users } from 'lucide-react';
+import { Flame, MapPin, TrendingUp, Leaf, Shield, AlertTriangle, Users } from 'lucide-react';
 import * as d3 from 'd3';
 
 // Configuração de cores baseada no IMESC
@@ -19,12 +19,7 @@ const FocosCalorApp = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [estatisticas, setEstatisticas] = useState(null);
-  const mapRef = useRef();
   const svgRef = useRef();
-
-  // Estados para controle de visualização
-  const [filtroAtivo, setFiltroAtivo] = useState('todos');
-  const [periodoSelecionado, setPeriodoSelecionado] = useState('30dias');
 
   useEffect(() => {
     carregarDados();
@@ -36,7 +31,7 @@ const FocosCalorApp = () => {
     }
   }, [dados]);
 
-  const carregarDados = async () => {
+  const carregarDados = useCallback(async () => {
     try {
       setLoading(true);
       
@@ -136,7 +131,6 @@ const FocosCalorApp = () => {
       { nome: 'Açailândia', lat: -4.9456, lon: -47.5078, focos: 380 }
     ];
 
-    const biomas = ['Cerrado', 'Amazônia'];
     const usosSolo = ['Agricultura', 'Pastagem', 'Vegetação Natural', 'Área Urbana', 'Mineração'];
     const terrasIndigenas = ['Terra Indígena Araribóia', 'Terra Indígena Cana Brava', 'Terra Indígena Alto Turiaçu'];
     const ucs = ['Parque Nacional Chapada das Mesas', 'RESEX Quilombo do Frechal', 'APA Baixada Maranhense'];
@@ -223,7 +217,6 @@ const FocosCalorApp = () => {
 
     const width = 600;
     const height = 400;
-    const margin = { top: 20, right: 20, bottom: 20, left: 20 };
 
     // Definir projeção para o Maranhão
     const projection = d3.geoMercator()
